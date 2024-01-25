@@ -78,5 +78,6 @@ if ($json_output) {
     say $str;
 }
 else {
-    system qq(yt-dlp "$url" -o "$output" @args);
+    my $exit_status = system qq(yt-dlp "$url" -o "$output" --no-mtime @args);
+    die "non-zero exit status for yt-dlp\n" if $exit_status >> 8;
 }
