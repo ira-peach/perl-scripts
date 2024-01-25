@@ -1,0 +1,81 @@
+=pod
+
+=head1 perl-scripts
+
+A collection of various perl programs I have written, usually as wrappers for
+other programs I call frequently.
+
+=head2 programs
+
+=head3 ffmpeg-polyconvert.pl
+
+A wrapper around L<ffmpeg|https://ffmpeg.org/> to reduce the size of a video by
+trying libx264 and libx265 codecs, as well as crf values between 20 and 40
+(inclusive).  This tries several attempts and outputs them.
+
+My primary usecase is to try and convert downloaded videos to meet the
+Discord-maximum 25 MB (without Nitro), and I don't know enough about video
+conversion not to just try 40 different combinations and look at the filesize.
+
+The time it took for a 7 minute 54 MB video (about equivalent to libx264 with
+crf 23 or libx265 with the same crf) was about 25 minutes for all 40 conversion
+attempts.  The resulting video was best with libx264 with crf 32 at 24 MB and
+libx265 with crf 31 at 24 MB.  More testing would be nice, but I just need it
+under 25 MB with acceptable quality.
+
+The time table is more than enough time to do other things, so I am not worried
+too much about how long it takes.
+
+Only tested with mp4 videos downloaded from TikTok.
+
+=head3 ,yt-dlp
+
+A wrapper around L<yt-dlp|https://github.com/yt-dlp/yt-dlp/>, primarily focused
+on my preferred defaults for downloading from TikTok to download and archive videos.
+
+=head2 terminology
+
+The term "wrapper" certainly does a lot more heavy lifting in my brain than I'd
+usually like, but without real pressure to figure it out more, it suffices for
+pretty much anything I use to call a certain external command line program more
+easily.
+
+=head2 license
+
+All code in this repository is AGPLv3+.  See COPYING.txt for details.
+
+=head2 motivation
+
+This underlying motivation to write many of these programs is to facilitate my
+downloads of first-party accounts and activist analyses of the ongoing genocide
+in Palestine by the State of Israel and share them onto Discord with people,
+primarily from TikTok.
+
+Please find the following creators as first party sources:
+
+=over 1
+
+=item Bisan Owda, @wizard_bisan1: L<TikTok|https://www.tiktok.com/@wizard_bisan1>, L<Instagram|https://www.instagram.com/wizard_bisan1/>
+
+=item Motaz Azaiza, @motaz_azaiza: L<Instagram|https://www.instagram.com/motaz_azaiza/>
+
+=back
+
+Please find the following creator as a disability-first advocate, covering many
+communication and disability aspects of the genocide against Palestine:
+
+=over 1
+
+=item Imani Barbarin, @crutches_and_spice: L<TikTok|https://www.tiktok.com/@crutches_and_spice>, L<Instagram|https://www.instagram.com/crutches_and_spice/>, L<Twitter|https://twitter.com/Imani_Barbarin>
+
+=back
+
+Please find the following organization as a source for third-party accounts of the ongoing genocide against Palestine:
+
+=over 1
+
+=item Al Jazeera English: L<Website|https://www.aljazeera.com/>, L<TikTok|https://www.tiktok.com/@aljazeeraenglish>, L<Instagram|https://www.instagram.com/aljazeeraenglish/>, L<Link in Bio|https://linkin.bio/aljazeeraenglish>.
+
+=back
+
+Free Palestine.

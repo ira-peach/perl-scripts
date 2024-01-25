@@ -1,0 +1,82 @@
+#!/usr/bin/env perl
+
+# ,yt-dlp - yt-dlp wrapper primarily for TikTok downloads
+# Copyright (C) 2024  Ira Peach
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of the GNU Affero General Public License as published by the Free
+# Software Foundation, either version 3 of the License, or (at your option) any
+# later version.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+use v5.36.0;
+use warnings;
+use strict;
+
+use Getopt::Long qw(:config gnu_getopt no_ignore_case no_auto_abbrev);
+use JSON::XS;
+
+sub usage {
+    use File::Basename;
+    my $prog = basename $0;
+    say "usage: $prog [OPTIONS] URL [--] [YT-DLP_OPTS]";
+    say "  yt-dlp wrapper";
+    say "  -h,--help                display this usage";
+    say "  -o,--output DEST         output file to DEST (passes -o to yt-dlp, so you may use it as an output template)";
+    say "  -c,--custom-title TITLE  infix custom title in video output filename (only usable without -o)";
+    say "  -j,--json                output JSON information to STDOUT and exit";
+    say "";
+    say "Default output template without -c set is:";
+    say "    %(upload_date>%Y-%m-%d)s_%(epoch-3600>%H%M%S)s.\@%(uploader)s.%(id)s.%(ext)s";
+    say "";
+    say "Default output template with -c set is:";
+    say "    %(upload_date>%Y-%m-%d)s_%(epoch-3600>%H%M%S)s.\@%(uploader)s.%(id)s.TITLE.%(ext)s";
+}
+
+my @args = ();
+sub add_arg {
+    push @args, @_;
+}
+
+my $json_output = 0;
+my $output = "";
+my $custom_title = "";
+
+GetOptions(
+    "help|h" => sub { usage; exit 0 },
+    "output|o=s" => \$output,
+    "json|j" => \$json_output,
+    "custom-title|c=s" => \$custom_title,
+    "<>" => \&add_arg)
+or die "error in command line arguments\n";
+
+unless ($output) {
+    $output = "%(upload_date>%Y-%m-%d)s_%(epoch-3600>%H%M%S)s.\@%(uploader)s.%(id)s";
+    $output = "$output.$custom_title" if $custom_title;
+    $output = "$output.%(ext)s";
+}
+
+push @args, @ARGV;
+
+die "Give at least 1 argument.\n" unless scalar @args >= 1;
+
+my $url = $args[0];
+shift @args;
+
+if ($json_output) {
+    my $json = JSON::XS->new->pretty(1);
+    my $str = qx(yt-dlp -j "$url" @args);
+    $str = $json->decode($str);
+    $str = $json->encode($str);
+    say $str;
+}
+else {
+    system qq(yt-dlp "$url" -o "$output" @args);
+}
