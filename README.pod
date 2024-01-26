@@ -33,6 +33,12 @@ Only tested with mp4 videos downloaded from TikTok.
 A wrapper around L<yt-dlp|https://github.com/yt-dlp/yt-dlp/>, primarily focused
 on my preferred defaults for downloading from TikTok to download and archive videos.
 
+=head3 new-pl
+
+Create a scaffold for new perl programs.  It is primarily focused on how I tend
+to write new programs with a general focus on rapid prototyping and command
+line arguments.
+
 =head2 terminology
 
 The term "wrapper" certainly does a lot more heavy lifting in my brain than I'd

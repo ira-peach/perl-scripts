@@ -1,0 +1,193 @@
+#!/usr/bin/env perl
+
+# new-pl - create a scaffold for a new perl program
+# Copyright (C) 2024  Ira Peach
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of the GNU Affero General Public License as published by the Free
+# Software Foundation, either version 3 of the License, or (at your option) any
+# later version.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+=pod
+
+=head1 NAME
+
+new-pl - Create a scaffold for a new perl program
+
+=head1 SYNOPSIS
+
+B<new-pl> S<[ B<-hf> ]> [ I<OUTPUT_FILE>]...
+
+=head1 DESCRIPTION
+
+B<new-pl> is a program to create a scaffold of a perl program according to a
+reasonable standard, outputting it to B<STDOUT> or one or more I<OUTPUT_FILE>
+paths if given instead.
+
+When I<OUTPUT_FILE> is B<"-">, the program will be printed to B<STDOUT>, once
+for each time encountered.
+
+The reasonable standard for the program is:
+
+=over 2
+
+=item * Programs usually accept command line arguments;
+
+=item * Arguments should adhere to reasonable (GNU) B<getopt>-style short and long options;
+
+=item * The scaffold should allow rapid prototyping of the program; and
+
+=item * License headers should be present for modification.
+
+=back
+
+Additionally, commonly-used imports are included for the standard library, as
+well as some CPAN imports available from cygwin and debian repositories.
+
+=head1 OPTIONS
+
+=over 5
+
+=item B<-h>
+
+Prints out a brief help message.
+
+=item B<-f>
+
+Forces overwrite of existent OUTPUT_FILE paths.
+
+=back
+
+=head1 SEE ALSO
+
+L<perl|https://www.perl.org/>
+
+=head1 AUTHOR
+
+Ira Peach <yoshi_says_acab@proton.me>
+
+=cut
+
+use v5.28.1;
+use warnings;
+use strict;
+
+use File::Basename;
+use Getopt::Long qw(:config gnu_getopt no_ignore_case no_auto_abbrev);
+
+sub usage {
+    my $prog = basename $0;
+    say "usage: $prog [-h] [-f] [OUTPUT_FILE]...";
+    say "  create a scaffold for a new perl program, writing it to one or more OUTPUT_FILE paths";
+    say "";
+    say "Options:";
+    say "  -h,--help   display this usage and exit";
+    say "  -f,--force  force overwrite of existent files";
+}
+
+my @args = ();
+sub add_arg {
+    push @args, @_;
+}
+
+my $force = 0;
+
+GetOptions(
+    "help|h" => sub { usage; exit 0 },
+    "force|f!" => \$force,
+    "<>" => \&add_arg)
+or die "error in command line arguments\n";
+
+push @args, @ARGV;
+
+my $output = "";
+while (my $line = <DATA>) {
+    $output = "$output$line";
+}
+
+if (scalar @args) {
+    for my $arg (@args) {
+        if (-f $arg and not $force) {
+            warn "cowardly refusing to overwrite '$arg'\n";
+            next;
+        }
+        elsif ($arg eq "-") {
+            print $output;
+            next;
+        }
+        open(my $fh, ">", $arg) or die "cannot open '$arg' for writing: $!\n";
+        print $fh $output or die "could not write to '$arg': $!\n";
+        close $fh or die "could not close '$arg': $!\n";
+        warn "scaffold written to '$arg'\n";
+    }
+}
+else {
+    print $output;
+}
+
+__DATA__
+#!/usr/bin/env perl
+
+# PROGRAM_NAME - SHORT_PROGRAM_DESCRIPTION
+# Copyright (C) 2024  Ira Peach
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of the GNU Affero General Public License as published by the Free
+# Software Foundation, either version 3 of the License, or (at your option) any
+# later version.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+use v5.36.0;
+use warnings;
+use strict;
+
+use File::Basename;
+use Getopt::Long qw(:config gnu_getopt no_ignore_case no_auto_abbrev);
+
+# The below imports require installation of some packages.  Packages are listed
+# for cygwin, then debian.
+
+# perl-JSON-XS, libjson-xs-perl
+#use JSON::XS qw(decode_json encode_json);
+
+# perl-File-Slurp, libfile-slurp-perl
+#use File::Slurp qw(read_file write_file);
+
+# perl-YAML-LibYAML, libyaml-libyaml-perl
+#use YAML::XS qw(Dump Load);
+
+sub usage {
+    my $prog = basename $0;
+    say "usage: $prog [OPTIONS]... PATH [OPTIONAL_STUFF]...";
+    say "  SHORT_PROGRAM_DESCRIPTION";
+    say "  -h,--help  display this usage and exit";
+}
+
+my @args = ();
+sub add_arg {
+    push @args, @_;
+}
+
+GetOptions(
+    "help|h" => sub { usage; exit 0 },
+    "<>" => \&add_arg)
+or die "error in command line arguments\n";
+
+push @args, @ARGV;
+
+die "no arguments allowed" if scalar @args > 0;
