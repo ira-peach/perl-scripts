@@ -7,6 +7,15 @@ other programs I call frequently.
 
 =head2 programs
 
+=head3 backup-firefox-profile.pl
+
+Backs up Firefox profiles as automatic updating tends to break things.  Primary
+motivation for this was that several websites using their local storage would
+not work unless I opened them in a private window on the affected Firefox
+profile (new profile worked, but it was a hassle to move everything over from
+the profile I've been using for the past several years, and I'd like to avoid
+that).
+
 =head3 ffmpeg-polyconvert.pl
 
 A wrapper around L<ffmpeg|https://ffmpeg.org/> to reduce the size of a video by
