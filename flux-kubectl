@@ -1,0 +1,156 @@
+#!/usr/bin/env perl
+
+# PROGRAM_NAME - SHORT_PROGRAM_DESCRIPTION
+# Copyright (C) 2024  Ira Peach
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of the GNU Affero General Public License as published by the Free
+# Software Foundation, either version 3 of the License, or (at your option) any
+# later version.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+use v5.36.0;
+use warnings;
+use strict;
+
+use File::Basename;
+use File::Find qw(find);
+use File::Path qw(make_path);
+use Getopt::Long qw(:config gnu_getopt no_ignore_case no_auto_abbrev);
+use POSIX qw(strftime);
+
+sub pp {
+    use Data::Dumper;
+    local $Data::Dumper::Indent = 1;
+    print Dumper(@_);
+}
+# usage: pp $my_var;
+# The below imports require installation of some packages.  Packages are listed
+# for cygwin, then debian.
+
+# perl-JSON-XS, libjson-xs-perl
+#use JSON::XS qw(decode_json encode_json);
+
+# perl-File-Slurp, libfile-slurp-perl
+#use File::Slurp qw(read_file write_file);
+
+# perl-YAML-LibYAML, libyaml-libyaml-perl
+#use YAML::XS qw(Dump Load);
+
+# (none; use cpan), libfile-tee-perl
+#use File::Tee qw(tee);
+
+# (none; use cpan), libstring-shellquote-perl
+#use String::ShellQuote qw(shell_quote);
+
+# perl-IPC-System-Simple, libipc-system-simple-perl
+#use IPC::System::Simple qw(capture capturex system systemx run runx $EXITVAL EXIT_ANY);
+
+# perl-Capture-Tiny, libcapture-tiny-perl
+#use Capture::Tiny qw(capture capture_stdout capture_stderr capture_merged tee tee_stdout tee_stderr tee_merged);
+
+$| = 1;
+
+my $now = time();
+$now = strftime('%Y-%m-%d_%H%M%SZ', gmtime($now));
+
+sub usage {
+    my $prog = basename $0;
+    say "usage: $prog KIND [OPTIONS]...";
+    say "  SHORT_PROGRAM_DESCRIPTION";
+    say "  -h,--help     display this usage and exit";
+    say "  -v,--verbose  add more verbose messaging";
+}
+
+my @args = ();
+sub add_arg {
+    push @args, @_;
+}
+
+my $action = "get";
+my $field_expr = "";
+my %match_column;
+my $kind;
+my $verbose;
+
+GetOptions(
+    "help|h" => sub { usage; exit 0 },
+    "get|g" => sub { $action = "get"; },
+    "field|f=s" => sub {
+        my ($name,$exprs) = @_;
+        for my $expr (split ',', $exprs) {
+            my ($column_number,$match,@rest) = split '=',$expr;
+            die "bad match expr\n" if scalar @rest;
+            die "bad match expr\n" unless $column_number;
+            die "bad match expr\n" unless $match;
+            $match_column{$column_number} = $match;
+        }
+    },
+    "verbose|v!" => \$verbose,
+    "<>" => \&add_arg)
+or die "error in command line arguments\n";
+
+push @args, @ARGV;
+
+die "provide 1 argument (resource kind)" if scalar @args != 1;
+
+$kind = $args[0] // die "please provide resource kind\n";
+
+my $command = qq(kubectl "$action" "$kind" -A -o wide);
+my $pid = open(my $fh, "-|", $command) or die "$!";
+my $header = <$fh>;
+
+my @columns = ();
+while (1) {
+    my $match = $header =~ /^([-A-Z0-9_]+ +)/;
+    last unless $match;
+    $header =~ s/^([-A-Z0-9_]+ +)//;
+    my $length = length $1;
+    #$length -= 1;
+    my $name = $1;
+    $name =~ s/ +$//;
+    push @columns, {
+        name => $name,
+        length => $length,
+    };
+}
+
+my $fmt = "";
+my $formatted_header = "";
+for my $column (@columns) {
+    $fmt = "${fmt}A$column->{length} ";
+    $formatted_header .= "$column->{name}\t";
+}
+chop $fmt;
+chop $formatted_header;
+say $formatted_header;
+
+my $output_count = 0;
+OUTER: while (<$fh>) {
+    my @data = unpack $fmt;
+    my $line = "";
+    my $column_number = 0;
+    for (@data) {
+        ++$column_number;
+        if ($match_column{$column_number}) {
+            if (!/$match_column{$column_number}/) {
+                next OUTER;
+            }
+        }
+        $line .= "$_\t";
+    }
+    chop $line;
+    say $line;
+    ++$output_count;
+}
+
+warn "warning: no matches output (check matches?)\n" unless $output_count;
+
+close $fh or die "$!";
