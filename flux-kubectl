@@ -42,7 +42,7 @@ sub pp {
 #use File::Slurp qw(read_file write_file);
 
 # perl-YAML-LibYAML, libyaml-libyaml-perl
-#use YAML::XS qw(Dump Load);
+use YAML::XS qw(Dump Load);
 
 # (none; use cpan), libfile-tee-perl
 #use File::Tee qw(tee);
@@ -75,14 +75,26 @@ sub add_arg {
 }
 
 my $action = "get";
+my $container = "";
 my $field_expr = "";
 my %match_column;
 my $kind;
+my $preserve_columns;
 my $verbose;
+my $force;
 
 GetOptions(
     "help|h" => sub { usage; exit 0 },
     "get|g" => sub { $action = "get"; },
+    "getx" => sub { $action = "getx"; },
+    "delete|d" => sub { $action = "delete"; },
+    "force|f" => \$force,
+    "container|c" => sub { $action = "get-container" },
+    "shell|s=s" => sub {
+        my ($name,$value) = @_;
+        $action = "shell";
+        $container = $value;
+    },
     "field|f=s" => sub {
         my ($name,$exprs) = @_;
         for my $expr (split ',', $exprs) {
@@ -93,6 +105,7 @@ GetOptions(
             $match_column{$column_number} = $match;
         }
     },
+    "preserve-columns|P" => \$preserve_columns,
     "verbose|v!" => \$verbose,
     "<>" => \&add_arg)
 or die "error in command line arguments\n";
@@ -103,11 +116,18 @@ die "provide 1 argument (resource kind)" if scalar @args != 1;
 
 $kind = $args[0] // die "please provide resource kind\n";
 
-my $command = qq(kubectl "$action" "$kind" -A -o wide);
+my $command = qq(kubectl get "$kind" -A -o wide);
 my $pid = open(my $fh, "-|", $command) or die "$!";
+
+# The tricky thing about the default kubectl output is that it is fixed width
+# upon generation, but those widths can change, plus values can either be
+# omitted or have spaces in them, which makes using awk tricky later.  Here, we
+# standardize the output to be tab-separated with the column names.
 my $header = <$fh>;
 
-my @columns = ();
+my @data = ();
+my @data_lengths = ();
+my @datum = ();
 while (1) {
     my $match = $header =~ /^([-A-Z0-9_]+ +)/;
     last unless $match;
@@ -116,41 +136,128 @@ while (1) {
     #$length -= 1;
     my $name = $1;
     $name =~ s/ +$//;
-    push @columns, {
-        name => $name,
-        length => $length,
-    };
+
+    push @datum, $name;
+    push @data_lengths, $length;
 }
+
+my $is_namespaced = $datum[0] eq "NAMESPACE";
+
+push @data, \@datum;
 
 my $fmt = "";
 my $formatted_header = "";
-for my $column (@columns) {
-    $fmt = "${fmt}A$column->{length} ";
-    $formatted_header .= "$column->{name}\t";
+for my $length (@data_lengths) {
+    $fmt = "${fmt}A$length ";
 }
 chop $fmt;
-chop $formatted_header;
-say $formatted_header;
 
-my $output_count = 0;
 OUTER: while (<$fh>) {
-    my @data = unpack $fmt;
-    my $line = "";
-    my $column_number = 0;
-    for (@data) {
-        ++$column_number;
-        if ($match_column{$column_number}) {
-            if (!/$match_column{$column_number}/) {
-                next OUTER;
-            }
-        }
-        $line .= "$_\t";
-    }
-    chop $line;
-    say $line;
-    ++$output_count;
+    my @datum = unpack $fmt;
+    push @data, \@datum;
 }
 
-warn "warning: no matches output (check matches?)\n" unless $output_count;
+my $count = -1;
+OUTER: for my $datum (@data) {
+    ++$count;
+    if ($count) {
+        for my $key (keys %match_column) {
+            my $match_expr = $match_column{$key};
+            next OUTER unless $datum->[$key-1] =~ /$match_expr/;
+            #warn "$datum->[$key-1] =~ /$match_expr/";
+        }
+    }
+
+    if ($action eq "get") {
+        if ($preserve_columns) {
+            my $line = pack $fmt, @$datum;
+            say $line;
+        }
+        else {
+            say join "\t",@$datum;
+        }
+    }
+    elsif ($action eq "shell") {
+        next unless $count;
+        die "type should be pod for shell action\n" unless $kind eq "pod";
+        my $namespace = $datum->[0];
+        my $name = $datum->[1];
+
+        my @command;
+        push @command, "kubectl";
+        push @command, "exec";
+        push @command, "-n";
+        push @command, $namespace;
+        push @command, $name;
+        push @command, "-c";
+        push @command, $container;
+        push @command, "-it";
+        push @command, "--";
+        push @command, "/bin/sh";
+        system(@command);
+    }
+    elsif ($action eq "get-container") {
+        next unless $count;
+        die "type should be pod for shell action\n" unless $kind eq "pod";
+        my $namespace = $datum->[0];
+        my $name = $datum->[1];
+        my $yaml = qx(kubectl get pod -n "$namespace" "$name" -o yaml);
+        my $resource = Load $yaml;
+        say "NAMESPACE\tNAME\tCONTAINER";
+        for my $container (@{$resource->{spec}{containers}}) {
+            say "$namespace\t$name\t$container->{name}";
+        }
+    }
+    else {
+        next unless $count;
+        my $real_action;
+        if ($action eq "getx") {
+            $real_action = "get";
+        }
+        my $namespace;
+        my $name;
+        if ($is_namespaced) {
+            $namespace = $datum->[0];
+            $name = $datum->[1];
+        }
+        else {
+            $name = $datum->[0];
+        }
+        my @command;
+        push @command, "kubectl";
+        push @command, $real_action // $action;
+        push @command, $kind;
+        if ($namespace) {
+            push @command, "-n";
+            push @command, $namespace;
+        }
+        push @command, $name;
+        if ($action eq "delete" and not $force) {
+            my $response = "";
+            while (1) {
+                if ($namespace) {
+                    print qq;really delete $kind in namespace $namespace with name $name? (y/n) ;;
+                }
+                else {
+                    print qq;really delete $kind with name $name? (y/n) ;;
+                }
+                $response = <STDIN>;
+                chomp $response;
+                if ($response =~ /y|n/) {
+                    last;
+                }
+                say "y or n only.  Retry.";
+            }
+
+            if ($response ne "y") {
+                say "skipping";
+                next;
+            }
+        }
+        system(@command);
+    }
+}
+
+warn "warning: no matches (check matches conditions?)\n" unless scalar @data > 1;
 
 close $fh or die "$!";
