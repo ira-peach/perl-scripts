@@ -48,6 +48,16 @@ Create a scaffold for new perl programs.  It is primarily focused on how I tend
 to write new programs with a general focus on rapid prototyping and command
 line arguments.
 
+=head3 sillytavern
+
+Start koboldcpp and SillyTavern in order using perl to determine when the
+backend is ready before pulling up the frontend.  This also logs both programs
+to the same console differentiated by "frontend: " or "backend: " prefixing
+their lines.
+
+Export the environment variables of SILLY_KOBOLD, SILLY_MODEL, and
+SILLY_WEB_DIR to set default values.
+
 =head2 terminology
 
 The term "wrapper" certainly does a lot more heavy lifting in my brain than I'd
@@ -61,10 +71,10 @@ All code in this repository is AGPLv3+.  See COPYING.txt for details.
 
 =head2 motivation
 
-This underlying motivation to write many of these programs is to facilitate my
-downloads of first-party accounts and activist analyses of the ongoing genocide
-in Palestine by the State of Israel and share them onto Discord with people,
-primarily from TikTok.
+This underlying motivation to write many (but not all) of these programs is to
+facilitate my downloads of first-party accounts and activist analyses of the
+ongoing genocide in Palestine by the State of Israel and share them onto
+Discord with people, primarily from TikTok.
 
 Please find the following creators as first party sources:
 

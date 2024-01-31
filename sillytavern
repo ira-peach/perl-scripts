@@ -1,0 +1,141 @@
+#!/usr/bin/env perl
+# sillytavern - start sillytavern and koboldcpp from cygwin on win32
+# Copyright (C) 2024  Ira Peach
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of the GNU Affero General Public License as published by the Free
+# Software Foundation, either version 3 of the License, or (at your option) any
+# later version.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+use v5.36.1;
+use warnings;
+use strict;
+
+use File::Basename;
+use File::Find qw(find);
+use File::Path qw(make_path);
+use Getopt::Long qw(:config gnu_getopt no_ignore_case no_auto_abbrev);
+use POSIX qw(strftime :sys_wait_h);
+
+# (none; use cpan), libstring-shellquote-perl
+use String::ShellQuote qw(shell_quote);
+
+$| = 1;
+
+my $now = time();
+$now = strftime('%Y-%m-%d_%H%M%SZ', gmtime($now));
+
+sub usage {
+    my $prog = basename $0;
+    say "usage: $prog [OPTIONS]... PATH [OPTIONAL_STUFF]...";
+    say "  sillytavern - start sillytavern and koboldcpp from cygwin on win32";
+    say "  -h,--help               display this usage and exit";
+    say "  -k,--koboldcpp PROGRAM  use PROGRAM for koboldcpp (will use PATH) (env: SILLY_KOBOLD)";
+    say "  -m,--model MODEL        use model (passes -m to koboldcpp) (env: SILLY_MODEL)";
+    say "  -v,--verbose            be more verbose in output to stderr";
+    say "  -w,--web-ui-dir DIR     use DIR as base director for SillyTavern (env: SILLY_WEB_DIR)";
+}
+
+my @args = ();
+sub add_arg {
+    push @args, @_;
+}
+
+my $kobold_exe = $ENV{SILLY_KOBOLD} // "koboldcpp.exe";
+my $model = $ENV{SILLY_MODEL} // "";
+my $verbose;
+my $web_ui_dir = $ENV{SILLY_WEB_DIR} // "";
+
+GetOptions(
+    "help|h" => sub { usage; exit 0 },
+    "kobold|k=s" => \$kobold_exe,
+    "model|m=s" => \$model,
+    "verbose|v!" => \$verbose,
+    "web-ui-dir|w=s" => \$web_ui_dir,
+    "<>" => \&add_arg)
+or die "error in command line arguments\n";
+
+push @args, @ARGV;
+
+die "no arguments allowed" if scalar @args > 0;
+
+my $errors = 0;
+
+unless ($kobold_exe) {
+    warn "must provide koboldcpp executable name or path (-k PROGRAM)\n";
+    $errors = 1;
+}
+
+# find koboldcpp absolute path if needed.
+unless ($kobold_exe =~ /^\//) {
+    $kobold_exe = qx(which $kobold_exe);
+    chomp $kobold_exe;
+}
+
+if (qx(uname) =~ /^CYGWIN_NT/) {
+    $model = qx(cygpath -w "$model");
+    chomp $model;
+}
+
+warn "using koboldcpp at '$kobold_exe'\n" if $verbose;
+
+# TODO: Figure out parameterization.
+my $kobold_command = qq("$kobold_exe" --usevulkan --threads 14 --contextsize 8192 --model "$model" 2>&1);
+
+warn "koboldcpp command: $kobold_command\n" if $verbose;
+
+my $backend_pid = open(my $backend, "-|", $kobold_command) or die "can't fork: $!";
+warn "spawned process $backend_pid for backend\n" if $verbose;
+
+my $exit_status = 0;
+while (<$backend>) {
+    print "backend: ";
+    print;
+    last if /^Please connect to custom endpoint at/;
+    if (eof) {
+        close $backend;
+        $exit_status = $? >> 8;
+        die "backend process child $backend_pid died prematurely with status $exit_status\n";
+    }
+}
+
+my $pid = fork;
+die "cannot fork" unless defined $pid;
+
+if ($pid) {
+    while (<$backend>) {
+        print "backend: ";
+    }
+    close $backend;
+    $exit_status = $? >> 8;
+    say "backend process child $backend_pid died with status $exit_status.";
+}
+else {
+    chdir $web_ui_dir;
+    warn "web UI directory is '$web_ui_dir'\n" if $verbose;
+
+    # Walk through the Start.bat commands for SillyTavern manually.
+    system("npm install --no-audit");
+    my $exit_status = $? >> 8;
+    die "'npm install --no-audit' exited with status $exit_status\n" if $exit_status;
+
+    my $frontend_pid = open(my $frontend, "-|", "node server.js") or die "can't fork: $!";
+    warn "spawned process $frontend_pid for frontend\n" if $verbose;
+    while (<$frontend>) {
+        print "frontend: ";
+        print;
+    }
+    close $frontend;
+    $exit_status = $? >> 8;
+    say "frontend process child $frontend_pid died with status $exit_status.";
+}
+
+exit $exit_status;
