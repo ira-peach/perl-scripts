@@ -157,6 +157,7 @@ use warnings;
 use strict;
 
 use File::Basename;
+use File::Find qw(find);
 use File::Path qw(make_path);
 use Getopt::Long qw(:config gnu_getopt no_ignore_case no_auto_abbrev);
 use POSIX qw(strftime);
@@ -173,8 +174,19 @@ use POSIX qw(strftime);
 # perl-YAML-LibYAML, libyaml-libyaml-perl
 #use YAML::XS qw(Dump Load);
 
+# (none; use cpan), libfile-tee-perl
+#use File::Tee qw(tee);
+
 # (none; use cpan), libstring-shellquote-perl
 #use String::ShellQuote qw(shell_quote);
+
+# perl-IPC-System-Simple, libipc-system-simple-perl
+#use IPC::System::Simple qw(capture capturex system systemx run runx $EXITVAL EXIT_ANY);
+
+# perl-Capture-Tiny, libcapture-tiny-perl
+#use Capture::Tiny qw(capture capture_stdout capture_stderr capture_merged tee tee_stdout tee_stderr tee_merged);
+
+$| = 1;
 
 my $now = time();
 $now = strftime('%Y-%m-%d_%H%M%SZ', gmtime($now));
@@ -183,7 +195,8 @@ sub usage {
     my $prog = basename $0;
     say "usage: $prog [OPTIONS]... PATH [OPTIONAL_STUFF]...";
     say "  SHORT_PROGRAM_DESCRIPTION";
-    say "  -h,--help  display this usage and exit";
+    say "  -h,--help     display this usage and exit";
+    say "  -v,--verbose  add more verbose messaging";
 }
 
 my @args = ();
@@ -191,8 +204,11 @@ sub add_arg {
     push @args, @_;
 }
 
+my $verbose;
+
 GetOptions(
     "help|h" => sub { usage; exit 0 },
+    "verbose|v!" => \$verbose,
     "<>" => \&add_arg)
 or die "error in command line arguments\n";
 
