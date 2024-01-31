@@ -95,8 +95,8 @@ sub install {
     }
 }
 
-install "new-pl";
 install ",yt-dlp";
-install "ffmpeg-polyconvert.pl";
 install "backup-firefox-profile.pl";
+install "ffmpeg-polyconvert.pl";
+install "new-pl";
 install "sillytavern";
