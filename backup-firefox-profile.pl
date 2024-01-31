@@ -149,6 +149,8 @@ else {
             }
             else {
                 my $exit_status = $? >> 8;
+                # override instances where archiving changed files is an error.
+                $exit_status = 0 if $exit_status == 1;
                 die "error: tar exited with non-zero exit status $exit_status\n" if $exit_status;
             }
         }
