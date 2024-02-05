@@ -35,11 +35,14 @@ $now = strftime('%Y-%m-%d_%H%M%SZ', gmtime($now));
 
 sub usage {
     my $prog = basename $0;
-    say "usage: $prog [OPTIONS]... PATH [OPTIONAL_STUFF]...";
+    say "usage: $prog [OPTIONS]...";
     say "  sillytavern - start sillytavern and koboldcpp from cygwin on win32";
     say "  -h,--help               display this usage and exit";
+    say "  --backend              only start the backend";
+    say "  --frontend              only start the frontend";
     say "  -k,--koboldcpp PROGRAM  use PROGRAM for koboldcpp (will use PATH) (env: SILLY_KOBOLD)";
     say "  -m,--model MODEL        use model (passes -m to koboldcpp) (env: SILLY_MODEL)";
+    say "  -p,--print-commands     print shell commands that would be run";
     say "  -v,--verbose            be more verbose in output to stderr";
     say "  -w,--web-ui-dir DIR     use DIR as base director for SillyTavern (env: SILLY_WEB_DIR)";
 }
@@ -51,13 +54,18 @@ sub add_arg {
 
 my $kobold_exe = $ENV{SILLY_KOBOLD} // "koboldcpp.exe";
 my $model = $ENV{SILLY_MODEL} // "";
+my $print;
+my $start_only = "";
 my $verbose;
 my $web_ui_dir = $ENV{SILLY_WEB_DIR} // "";
 
 GetOptions(
     "help|h" => sub { usage; exit 0 },
+    "backend" => sub { $start_only = "backend" },
+    "frontend" => sub { $start_only = "frontend" },
     "kobold|k=s" => \$kobold_exe,
     "model|m=s" => \$model,
+    "print|p" => \$print,
     "verbose|v!" => \$verbose,
     "web-ui-dir|w=s" => \$web_ui_dir,
     "<>" => \&add_arg)
@@ -91,6 +99,31 @@ warn "using koboldcpp at '$kobold_exe'\n" if $verbose;
 my $kobold_command = qq("$kobold_exe" --usevulkan --threads 14 --contextsize 8192 --model "$model" 2>&1);
 
 warn "koboldcpp command: $kobold_command\n" if $verbose;
+
+if ($print) {
+    say $kobold_command;
+    say "cd '$web_ui_dir' && npm install --no-audit && node server.js";
+    exit 0;
+}
+
+if ($start_only) {
+    if ($start_only eq "frontend") {
+        chdir $web_ui_dir;
+        warn "web UI directory is '$web_ui_dir'\n" if $verbose;
+        system("npm install --no-audit");
+        my $exit_status = $? >> 8;
+        die "'npm install --no-audit' exited with status $exit_status\n" if $exit_status;
+
+        exec("node server.js") or die "can't fork: $!";
+    }
+    elsif ($start_only eq "backend") {
+        exec($kobold_command) or die "can't fork: $!";
+    }
+    else {
+        die "unknown start_only value '$start_only'";
+    }
+}
+
 
 my $backend_pid = open(my $backend, "-|", $kobold_command) or die "can't fork: $!";
 warn "spawned process $backend_pid for backend\n" if $verbose;
