@@ -66,7 +66,31 @@ sub usage {
     say "usage: $prog KIND [OPTIONS]...";
     say "  SHORT_PROGRAM_DESCRIPTION";
     say "  -h,--help     display this usage and exit";
+    say "  -c|--container  show containers on pods";
+    say "  -d|--delete   delete matching resources of KIND";
+    say "  -F|--field NUM=REGEX  match field NUM with REGEX (starting from 1)";
+    say "  --follow  follow when given --logs";
+    say "  -g|--get  get resource (default action)";
+    say "  --getx  get resource, but do not process data in the program (used for debugging)";
+    say "  --logs  get logs from kind pod";
+    say "  -P|--preserve-columns  preserve fixed-width columns on output instead of converting to tab-separated value";
+    say "  -s|--shell CONTAINER [ARGS]  shell into matched pod and CONTAINER";
     say "  -v,--verbose  add more verbose messaging";
+}
+
+sub get_containers {
+    my ($namespace, $name) = @_;
+    my $yaml = qx(kubectl get pod -n "$namespace" "$name" -o yaml);
+    my $resource = Load $yaml;
+    my @output = ();
+    for my $container (@{$resource->{spec}{containers}}) {
+        push @output, {
+            namespace => $namespace,
+            name => $name,
+            container => $container,
+        };
+    }
+    return @output;
 }
 
 my @args = ();
@@ -115,9 +139,14 @@ or die "error in command line arguments\n";
 
 push @args, @ARGV;
 
-die "provide 1 argument (resource kind)" if scalar @args != 1;
+if ($action eq "shell") {
+    die "provide at least 1 argument (resource kind plus shell arguments) for shell" if scalar @args < 1;
+}
+else {
+    die "provide 1 argument (resource kind)" if scalar @args != 1;
+}
 
-$kind = $args[0] // die "please provide resource kind\n";
+$kind = shift @args // die "please provide resource kind\n";
 
 if ($action eq "logs" and $kind ne "pod") {
     die "--logs is only compatible with kind 'pod' (note: use singular name only)";
@@ -186,7 +215,13 @@ OUTER: for my $datum (@data) {
     if ($count) {
         for my $key (keys %match_column) {
             my $match_expr = $match_column{$key};
-            next OUTER unless $datum->[$key-1] =~ /$match_expr/;
+            if (substr($match_expr,0,1) eq "!") {
+                $match_expr = substr($match_expr,1);
+                next OUTER if $datum->[$key-1] =~ /$match_expr/;
+            }
+            else {
+                next OUTER unless $datum->[$key-1] =~ /$match_expr/;
+            }
             #warn "$datum->[$key-1] =~ /$match_expr/";
         }
     }
@@ -220,6 +255,11 @@ OUTER: for my $datum (@data) {
         die "type should be pod for shell action\n" unless $kind eq "pod";
         my $namespace = $datum->[0];
         my $name = $datum->[1];
+        unless ($container) {
+            my @containers = get_containers $namespace, $name;
+            my $container = $containers[0]->{container}{name};
+            warn "warning: container automatically set to '$container'";
+        }
 
         my @command;
         push @command, "kubectl";
@@ -231,8 +271,18 @@ OUTER: for my $datum (@data) {
         push @command, $container;
         push @command, "-it";
         push @command, "--";
-        push @command, "/bin/sh";
+        if (@args) {
+            push @command, @args
+        }
+        else {
+            push @command, "/bin/sh";
+        }
         system(@command);
+        my $status = $? >> 8;
+        if (not $force and $status) {
+            warn "error: last command exited with status $status.  Exiting (use --force to ignore)";
+            exit $status;
+        }
     }
     elsif ($action eq "get-container") {
         next unless $count;
