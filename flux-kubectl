@@ -299,6 +299,6 @@ OUTER: for my $datum (@data) {
     }
 }
 
-warn "warning: no matches (check matches conditions?)\n" unless scalar @data > 1;
+warn "warning: no matches (check match conditions?)\n" unless scalar @data > 1;
 
 close $fh or die "$!";
