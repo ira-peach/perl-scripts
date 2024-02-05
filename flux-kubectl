@@ -48,7 +48,7 @@ use YAML::XS qw(Dump Load);
 #use File::Tee qw(tee);
 
 # (none; use cpan), libstring-shellquote-perl
-#use String::ShellQuote qw(shell_quote);
+use String::ShellQuote qw(shell_quote);
 
 # perl-IPC-System-Simple, libipc-system-simple-perl
 #use IPC::System::Simple qw(capture capturex system systemx run runx $EXITVAL EXIT_ANY);
@@ -68,6 +68,7 @@ sub usage {
     say "  -h,--help     display this usage and exit";
     say "  -c|--container  show containers on pods";
     say "  -d|--delete   delete matching resources of KIND";
+    say "  --dry-run  print commands instead of executing";
     say "  -F|--field NUM=REGEX  match field NUM with REGEX (starting from 1)";
     say "  --follow  follow when given --logs";
     say "  -g|--get  get resource (default action)";
@@ -100,6 +101,7 @@ sub add_arg {
 
 my $action = "get";
 my $container = "";
+my $dry_run;
 my $field_expr = "";
 my %match_column;
 my $follow;
@@ -112,6 +114,7 @@ GetOptions(
     "help|h" => sub { usage; exit 0 },
     "container|c" => sub { $action = "get-container" },
     "delete|d" => sub { $action = "delete"; },
+    "dry-run" => \$dry_run,
     "field|F=s" => sub {
         my ($name,$exprs) = @_;
         for my $expr (split ',', $exprs) {
@@ -139,12 +142,7 @@ or die "error in command line arguments\n";
 
 push @args, @ARGV;
 
-if ($action eq "shell") {
-    die "provide at least 1 argument (resource kind plus shell arguments) for shell" if scalar @args < 1;
-}
-else {
-    die "provide 1 argument (resource kind)" if scalar @args != 1;
-}
+die "provide at least 1 argument (resource kind plus additional arguments)" if scalar @args < 1;
 
 $kind = shift @args // die "please provide resource kind\n";
 
@@ -153,6 +151,9 @@ if ($action eq "logs" and $kind ne "pod") {
 }
 
 my $command = qq(kubectl get "$kind" -A -o wide);
+if ($dry_run) {
+    warn "dry run: $command\n";
+}
 my $pid = open(my $fh, "-|", $command) or die "$!";
 
 # The tricky thing about the default kubectl output is that it is fixed width
@@ -230,18 +231,26 @@ OUTER: for my $datum (@data) {
         next unless $count;
         my $namespace = $datum->[0];
         my $name = $datum->[1];
-        my @command;
-        push @command, "kubectl";
-        push @command, "logs";
-        push @command, "-n";
-        push @command, $namespace;
-        push @command, $name;
-        push @command, "--timestamps=true";
-        push @command, "--all-containers=true";
+        my @command = (
+            "kubectl",
+            "logs",
+            "-n",
+            $namespace,
+            $name,
+            "--timestamps=true",
+            "--all-containers=true",
+        );
         push @command, "--follow=true" if $follow;
-        system(@command);
+        push @command, @args if @args;
+        my $shell_command = shell_quote @command;
+        if ($dry_run) {
+            warn "dry run: $shell_command\n";
+            next;
+        }
+        system("sh", "-c", $shell_command);
     }
     elsif ($action eq "get") {
+        next if $dry_run;
         if ($preserve_columns) {
             my $line = pack $fmt, @$datum;
             say $line;
@@ -257,30 +266,40 @@ OUTER: for my $datum (@data) {
         my $name = $datum->[1];
         unless ($container) {
             my @containers = get_containers $namespace, $name;
-            my $container = $containers[0]->{container}{name};
-            warn "warning: container automatically set to '$container'";
+            $container = $containers[0]->{container}{name};
+            warn "warning: container automatically set to '$container'\n";
         }
 
-        my @command;
-        push @command, "kubectl";
-        push @command, "exec";
-        push @command, "-n";
-        push @command, $namespace;
-        push @command, $name;
-        push @command, "-c";
-        push @command, $container;
-        push @command, "-it";
-        push @command, "--";
+        my @command = (
+            "kubectl",
+            "exec",
+            "-n",
+            $namespace,
+            $name,
+            "-c",
+            $container,
+            "-it",
+            "--",
+        );
+
         if (@args) {
             push @command, @args
         }
         else {
             push @command, "/bin/sh";
         }
-        system(@command);
+
+        my $shell_command = shell_quote @command;
+
+        if ($dry_run) {
+            warn "dry run: $shell_command\n";
+            next;
+        }
+
+        system("sh", "-c", $shell_command);
         my $status = $? >> 8;
         if (not $force and $status) {
-            warn "error: last command exited with status $status.  Exiting (use --force to ignore)";
+            warn "error: last command exited with status $status.  Exiting (use --force to ignore)\n";
             exit $status;
         }
     }
@@ -289,14 +308,19 @@ OUTER: for my $datum (@data) {
         die "type should be pod for shell action\n" unless $kind eq "pod";
         my $namespace = $datum->[0];
         my $name = $datum->[1];
-        my $yaml = qx(kubectl get pod -n "$namespace" "$name" -o yaml);
+        my $shell_command = qq(kubectl get pod -n "$namespace" "$name" -o yaml);
+        if ($dry_run) {
+            warn "dry run: $shell_command\n";
+            next;
+        }
+        my $yaml = qx($shell_command);
         my $resource = Load $yaml;
         say "NAMESPACE\tNAME\tCONTAINER";
         for my $container (@{$resource->{spec}{containers}}) {
             say "$namespace\t$name\t$container->{name}";
         }
     }
-    elsif ($action =~ /^getx?/) {
+    elsif ($action =~ /^getx?$/ or $action eq "delete") {
         next unless $count;
         my $real_action;
         if ($action eq "getx") {
@@ -323,6 +347,10 @@ OUTER: for my $datum (@data) {
         if ($action eq "delete" and not $force) {
             my $response = "";
             while (1) {
+                if ($dry_run) {
+                    $response = "y";
+                    last;
+                }
                 if ($namespace) {
                     print qq;really delete $kind in namespace $namespace with name $name? (y/n) ;;
                 }
@@ -342,7 +370,12 @@ OUTER: for my $datum (@data) {
                 next;
             }
         }
-        system(@command);
+        my $shell_command = shell_quote @command;
+        if ($dry_run) {
+            warn "dry run: $shell_command\n";
+            next;
+        }
+        system("sh", "-c", $shell_command);
     }
     else {
         die "unknown action '$action'";
