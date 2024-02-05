@@ -246,7 +246,7 @@ OUTER: for my $datum (@data) {
             say "$namespace\t$name\t$container->{name}";
         }
     }
-    else {
+    elsif ($action =~ /^getx?/) {
         next unless $count;
         my $real_action;
         if ($action eq "getx") {
@@ -293,6 +293,9 @@ OUTER: for my $datum (@data) {
             }
         }
         system(@command);
+    }
+    else {
+        die "unknown action '$action'";
     }
 }
 
