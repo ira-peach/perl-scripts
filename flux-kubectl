@@ -130,39 +130,55 @@ my $pid = open(my $fh, "-|", $command) or die "$!";
 # upon generation, but those widths can change, plus values can either be
 # omitted or have spaces in them, which makes using awk tricky later.  Here, we
 # standardize the output to be tab-separated with the column names.
-my $header = <$fh>;
+#
+# This will return a hash with data and lengths as arrays (guaranteed same
+# length), and format (to pack and unpack the data).  Each length is the total
+# length of each column slice.
+sub parse_fixed_width_data {
+    my ($fh) = @_;
+    my $header = <$fh>;
 
-my @data = ();
-my @data_lengths = ();
-my @datum = ();
-while (1) {
-    my $match = $header =~ /^([-A-Z0-9_]+ +)/;
-    last unless $match;
-    $header =~ s/^([-A-Z0-9_]+ +)//;
-    my $length = length $1;
-    #$length -= 1;
-    my $name = $1;
-    $name =~ s/ +$//;
+    my @data = ();
+    my @data_lengths = ();
+    my @datum = ();
+    while (1) {
+        my $match = $header =~ /^([-A-Z0-9_]+ +)/;
+        last unless $match;
+        $header =~ s/^([-A-Z0-9_]+ +)//;
+        my $length = length $1;
+        #$length -= 1;
+        my $name = $1;
+        $name =~ s/ +$//;
 
-    push @datum, $name;
-    push @data_lengths, $length;
-}
-
-my $is_namespaced = $datum[0] eq "NAMESPACE";
-
-push @data, \@datum;
-
-my $fmt = "";
-my $formatted_header = "";
-for my $length (@data_lengths) {
-    $fmt = "${fmt}A$length ";
-}
-chop $fmt;
-
-OUTER: while (<$fh>) {
-    my @datum = unpack $fmt;
+        push @datum, $name;
+        push @data_lengths, $length;
+    }
     push @data, \@datum;
+
+    my $format = "";
+    my $formatted_header = "";
+    for my $length (@data_lengths) {
+        $format = "${format}A$length ";
+    }
+    chop $format;
+
+    OUTER: while (<$fh>) {
+        my @datum = unpack $format;
+        push @data, \@datum;
+    }
+
+    my $ret = {
+        data => \@data,
+        lengths => \@data_lengths,
+        format => $format,
+    };
+    return $ret;
 }
+my $parsed = parse_fixed_width_data $fh;
+my @data = @{$parsed->{data}};
+my @data_lengths = @{$parsed->{lengths}};
+my $fmt = $parsed->{format};
+my $is_namespaced = $data[0][0] eq "NAMESPACE";
 
 my $count = -1;
 OUTER: for my $datum (@data) {
