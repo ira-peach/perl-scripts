@@ -78,6 +78,7 @@ my $action = "get";
 my $container = "";
 my $field_expr = "";
 my %match_column;
+my $follow;
 my $kind;
 my $preserve_columns;
 my $verbose;
@@ -90,6 +91,8 @@ GetOptions(
     "delete|d" => sub { $action = "delete"; },
     "force|f" => \$force,
     "container|c" => sub { $action = "get-container" },
+    "logs" => sub { $action = "logs" },
+    "follow" => \$follow,
     "shell|s=s" => sub {
         my ($name,$value) = @_;
         $action = "shell";
@@ -115,6 +118,10 @@ push @args, @ARGV;
 die "provide 1 argument (resource kind)" if scalar @args != 1;
 
 $kind = $args[0] // die "please provide resource kind\n";
+
+if ($action eq "logs" and $kind ne "pod") {
+    die "--logs is only compatible with kind 'pod' (note: use singular name only)";
+}
 
 my $command = qq(kubectl get "$kind" -A -o wide);
 my $pid = open(my $fh, "-|", $command) or die "$!";
@@ -168,7 +175,22 @@ OUTER: for my $datum (@data) {
         }
     }
 
-    if ($action eq "get") {
+    if ($action eq "logs") {
+        next unless $count;
+        my $namespace = $datum->[0];
+        my $name = $datum->[1];
+        my @command;
+        push @command, "kubectl";
+        push @command, "logs";
+        push @command, "-n";
+        push @command, $namespace;
+        push @command, $name;
+        push @command, "--timestamps=true";
+        push @command, "--all-containers=true";
+        push @command, "--follow=true" if $follow;
+        system(@command);
+    }
+    elsif ($action eq "get") {
         if ($preserve_columns) {
             my $line = pack $fmt, @$datum;
             say $line;
