@@ -401,7 +401,7 @@ OUTER: for my $datum (@data) {
             say "$namespace\t$name\t$container->{name}";
         }
     }
-    elsif ($action =~ /^getx?$/ or $action eq "delete") {
+    elsif ($action eq "getx" or $action eq "delete") {
         next unless $count;
         my $real_action;
         if ($action eq "getx") {
