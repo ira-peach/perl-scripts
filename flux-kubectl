@@ -16,7 +16,6 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-# WIP commit: Use git bash version
 use v5.32.1;
 use warnings;
 use strict;
@@ -62,7 +61,6 @@ $| = 1;
 my $now = time();
 $now = strftime('%Y-%m-%d_%H%M%SZ', gmtime($now));
 
-# WIP commit: add explain action
 sub usage {
     my $prog = basename $0;
     say "usage: $prog KIND [OPTIONS]...";
@@ -84,9 +82,6 @@ sub usage {
     say "  -v,--verbose  add more verbose messaging";
 }
 
-# WIP commit: move parse_fixed_width_data to top of file to ensure we are not
-# inheriting any of the enclosing environment and document other issues.
-#
 # The tricky thing about the default kubectl output is that it is fixed width
 # upon generation, but those widths can change depending on what's running in
 # the cluster.  Additionally, values can either be omitted or have spaces in
@@ -211,7 +206,6 @@ GetOptions(
     "field|F=s" => sub {
         my ($name,$exprs) = @_;
         # split on non-escaped commas with a lookbehind assertion
-        # WIP commit: allow escaping comma in field separators
         for my $expr (split /(?<!\\),/, $exprs) {
             my ($column_number,$match,@rest) = split '=',$expr;
             die "bad match expr\n" if scalar @rest;
@@ -243,7 +237,6 @@ die "provide at least 1 argument (resource kind plus additional arguments)" if s
 
 $kind = shift @args // die "please provide resource kind\n";
 
-# WIP commit: add explain action
 if ($action eq "explain") {
     my @command = ("kubectl", "explain", $kind);
     push @command, @args;
@@ -257,7 +250,6 @@ if ($action eq "explain") {
     exit $status;
 }
 
-# WIP commit: use aliases from kubectl api-resources
 my %aliases = get_aliases;
 die "unknown kind '$kind'" unless $aliases{$kind};
 $kind = $aliases{$kind};
@@ -281,7 +273,6 @@ if ($output_yaml) {
 }
 
 my $command = qq(kubectl get "$kind" -A -o wide);
-# WIP commit: simplify dry run conditional
 warn "dry run: $command\n" if $dry_run;
 my $pid = open(my $fh, "-|", $command) or die "$!";
 
