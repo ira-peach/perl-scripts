@@ -62,6 +62,7 @@ $| = 1;
 my $now = time();
 $now = strftime('%Y-%m-%d_%H%M%SZ', gmtime($now));
 
+# WIP commit: add explain action
 sub usage {
     my $prog = basename $0;
     say "usage: $prog KIND [OPTIONS]...";
@@ -75,92 +76,21 @@ sub usage {
     say "  -g|--get  get resource (default action)";
     say "  --getx  get resource, but do not process data in the program (used for debugging)";
     say "  --logs  get logs from kind pod";
+    say "  --explain  explain kind";
     say "  -P|--preserve-columns  preserve fixed-width columns on output instead of converting to tab-separated value";
     say "  -s|--shell CONTAINER [ARGS]  shell into matched pod and CONTAINER";
+    say "  -R|--reconcile  reconcile kustomization kind (with source)";
     say "  -v,--verbose  add more verbose messaging";
 }
 
-sub get_containers {
-    my ($namespace, $name) = @_;
-    my $yaml = qx(kubectl get pod -n "$namespace" "$name" -o yaml);
-    my $resource = Load $yaml;
-    my @output = ();
-    for my $container (@{$resource->{spec}{containers}}) {
-        push @output, {
-            namespace => $namespace,
-            name => $name,
-            container => $container,
-        };
-    }
-    return @output;
-}
-
-my @args = ();
-sub add_arg {
-    push @args, @_;
-}
-
-my $action = "get";
-my $container = "";
-my $dry_run;
-my $field_expr = "";
-my %match_column;
-my $follow;
-my $kind;
-my $preserve_columns;
-my $verbose;
-my $force;
-
-GetOptions(
-    "help|h" => sub { usage; exit 0 },
-    "container|c" => sub { $action = "get-container" },
-    "delete|d" => sub { $action = "delete"; },
-    "dry-run" => \$dry_run,
-    "field|F=s" => sub {
-        my ($name,$exprs) = @_;
-        for my $expr (split ',', $exprs) {
-            my ($column_number,$match,@rest) = split '=',$expr;
-            die "bad match expr\n" if scalar @rest;
-            die "bad match expr\n" unless $column_number;
-            die "bad match expr\n" unless $match;
-            $match_column{$column_number} = $match;
-        }
-    },
-    "follow" => \$follow,
-    "force|f" => \$force,
-    "get|g" => sub { $action = "get"; },
-    "getx" => sub { $action = "getx"; },
-    "logs" => sub { $action = "logs" },
-    "preserve-columns|P" => \$preserve_columns,
-    "shell|s=s" => sub {
-        my ($name,$value) = @_;
-        $action = "shell";
-        $container = $value;
-    },
-    "verbose|v!" => \$verbose,
-    "<>" => \&add_arg)
-or die "error in command line arguments\n";
-
-push @args, @ARGV;
-
-die "provide at least 1 argument (resource kind plus additional arguments)" if scalar @args < 1;
-
-$kind = shift @args // die "please provide resource kind\n";
-
-if ($action eq "logs" and $kind ne "pod") {
-    die "--logs is only compatible with kind 'pod' (note: use singular name only)";
-}
-
-my $command = qq(kubectl get "$kind" -A -o wide);
-if ($dry_run) {
-    warn "dry run: $command\n";
-}
-my $pid = open(my $fh, "-|", $command) or die "$!";
-
+# WIP commit: move parse_fixed_width_data to top of file to ensure we are not
+# inheriting any of the enclosing environment and document other issues.
+#
 # The tricky thing about the default kubectl output is that it is fixed width
-# upon generation, but those widths can change, plus values can either be
-# omitted or have spaces in them, which makes using awk tricky later.  Here, we
-# standardize the output to be tab-separated with the column names.
+# upon generation, but those widths can change depending on what's running in
+# the cluster.  Additionally, values can either be omitted or have spaces in
+# them, which makes using awk tricky later.  Here, we standardize the output to
+# be tab-separated with the column names.
 #
 # This will return a hash with data and lengths as arrays (guaranteed same
 # length), and format (to pack and unpack the data).  Each length is the total
@@ -205,6 +135,132 @@ sub parse_fixed_width_data {
     };
     return $ret;
 }
+
+sub get_containers {
+    my ($namespace, $name) = @_;
+    my $yaml = qx(kubectl get pod -n "$namespace" "$name" -o yaml);
+    my $resource = Load $yaml;
+    my @output = ();
+    for my $container (@{$resource->{spec}{containers}}) {
+        push @output, {
+            namespace => $namespace,
+            name => $name,
+            container => $container,
+        };
+    }
+    return @output;
+}
+
+sub get_aliases {
+    my $command = "kubectl api-resources";
+    my $pid = open(my $fh, "-|", $command) or die "$!";
+    my $parsed = parse_fixed_width_data $fh;
+    my %output = ();
+    my $count = -1;
+    for my $datum ($parsed->{data}->@*) {
+        $count++;
+        next unless $count;
+        next unless $datum->[1];
+        my $singular = $datum->[0] =~ s/s$//r;
+        $output{$singular} = $datum->[0];
+        $output{$datum->[1]} = $datum->[0];
+        $output{$datum->[0]} = $datum->[0];
+    }
+    #for my $datum ($parsed->{data}->@*) {
+    #    $count++;
+    #    next unless $count;
+    #    my $singular = $datum->[0] =~ s/s$//r;
+    #    push @{$output{$datum->[0]}}, $singular if $singular and not $output{$datum->[0]};
+    #    push @{$output{$datum->[0]}}, $datum->[1];
+    #}
+    return %output;
+}
+
+my @args = ();
+sub add_arg {
+    push @args, @_;
+}
+
+my $action = "get";
+my $container = "";
+my $dry_run;
+my $field_expr = "";
+my %match_column;
+my $follow;
+my $kind;
+my $preserve_columns;
+my $verbose;
+my $force;
+
+GetOptions(
+    "help|h" => sub { usage; exit 0 },
+    "container|c" => sub { $action = "get-container" },
+    "delete|d" => sub { $action = "delete"; },
+    "dry-run" => \$dry_run,
+    "explain" => sub { $action = "explain"; },
+    "field|F=s" => sub {
+        my ($name,$exprs) = @_;
+        # split on non-escaped commas with a lookbehind assertion
+        # WIP commit: allow escaping comma in field separators
+        for my $expr (split /(?<!\\),/, $exprs) {
+            my ($column_number,$match,@rest) = split '=',$expr;
+            die "bad match expr\n" if scalar @rest;
+            die "bad match expr\n" unless $column_number;
+            die "bad match expr\n" unless $match;
+            $match_column{$column_number} = $match;
+        }
+    },
+    "follow" => \$follow,
+    "force|f" => \$force,
+    "get|g" => sub { $action = "get"; },
+    "getx" => sub { $action = "getx"; },
+    "logs" => sub { $action = "logs" },
+    "preserve-columns|P" => \$preserve_columns,
+    "shell|s=s" => sub {
+        my ($name,$value) = @_;
+        $action = "shell";
+        $container = $value;
+    },
+    "reconcile|R" => sub { $action = "reconcile" },
+    "verbose|v!" => \$verbose,
+    "<>" => \&add_arg)
+or die "error in command line arguments\n";
+
+push @args, @ARGV;
+
+die "provide at least 1 argument (resource kind plus additional arguments)" if scalar @args < 1;
+
+$kind = shift @args // die "please provide resource kind\n";
+
+# WIP commit: add explain action
+if ($action eq "explain") {
+    my @command = ("kubectl", "explain", $kind);
+    push @command, @args;
+    my $shell_command = shell_quote @command;
+    if ($dry_run) {
+        warn "dry run: $shell_command\n";
+        exit 0;
+    }
+    system("sh", "-c", $shell_command);
+    my $status = $? >> 8;
+    exit $status;
+}
+
+# WIP commit: use aliases from kubectl api-resources
+my %aliases = get_aliases;
+die "unknown kind '$kind'" unless $aliases{$kind};
+$kind = $aliases{$kind};
+warn "verbose: kind is '$kind'\n" if $verbose;
+
+if ($action eq "logs" and $kind ne "pods") {
+    die "--logs is only compatible with kind 'pod'";
+}
+
+my $command = qq(kubectl get "$kind" -A -o wide);
+# WIP commit: simplify dry run conditional
+warn "dry run: $command\n" if $dry_run;
+my $pid = open(my $fh, "-|", $command) or die "$!";
+
 my $parsed = parse_fixed_width_data $fh;
 my @data = @{$parsed->{data}};
 my @data_lengths = @{$parsed->{lengths}};
@@ -262,7 +318,7 @@ OUTER: for my $datum (@data) {
     }
     elsif ($action eq "shell") {
         next unless $count;
-        die "type should be pod for shell action\n" unless $kind eq "pod";
+        die "type should be pod for shell action\n" unless $kind eq "pods";
         my $namespace = $datum->[0];
         my $name = $datum->[1];
         unless ($container) {
@@ -306,7 +362,7 @@ OUTER: for my $datum (@data) {
     }
     elsif ($action eq "get-container") {
         next unless $count;
-        die "type should be pod for shell action\n" unless $kind eq "pod";
+        die "type should be pod for shell action\n" unless $kind eq "pods";
         my $namespace = $datum->[0];
         my $name = $datum->[1];
         my $shell_command = qq(kubectl get pod -n "$namespace" "$name" -o yaml);
@@ -371,6 +427,27 @@ OUTER: for my $datum (@data) {
                 next;
             }
         }
+        my $shell_command = shell_quote @command;
+        if ($dry_run) {
+            warn "dry run: $shell_command\n";
+            next;
+        }
+        system("sh", "-c", $shell_command);
+    }
+    elsif ($action eq "reconcile") {
+        die "reconciliation is only available for (flux) kustomizations\n" unless $kind eq "kustomizations";
+        my $namespace = $datum->[0];
+        my $name = $datum->[1];
+        my @command = (
+            "flux",
+            "reconcile",
+            $kind,
+            "-n",
+            $namespace,
+            $name,
+            "--with-source",
+        );
+        push @command, @args;
         my $shell_command = shell_quote @command;
         if ($dry_run) {
             warn "dry run: $shell_command\n";
