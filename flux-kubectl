@@ -103,9 +103,11 @@ sub parse_fixed_width_data {
     my @data_lengths = ();
     my @datum = ();
     while (1) {
-        my $match = $header =~ /^([-A-Z0-9_]+ +)/;
-        last unless $match;
-        $header =~ s/^([-A-Z0-9_]+ +)//;
+        my $header_regex = '^([-A-Z0-9_]+ +)';
+        my $match = $header =~ $header_regex;
+        $header =~ /(.*)/;
+        $header =~ s/$header_regex//;
+        $header = "" unless $match;
         my $length = length $1;
         #$length -= 1;
         my $name = $1;
@@ -113,17 +115,23 @@ sub parse_fixed_width_data {
 
         push @datum, $name;
         push @data_lengths, $length;
+        last unless $match;
     }
     push @data, \@datum;
 
     my $format = "";
-    my $formatted_header = "";
+    my $count = 0;
     for my $length (@data_lengths) {
-        $format = "${format}A$length ";
+        $count++;
+        if ($count == scalar @data_lengths) {
+            $format = "${format}A*";
+        }
+        else {
+            $format = "${format}A$length ";
+        }
     }
-    chop $format;
 
-    OUTER: while (<$fh>) {
+    while (<$fh>) {
         my @datum = unpack $format;
         push @data, \@datum;
     }
