@@ -459,13 +459,15 @@ OUTER: for my $datum (@data) {
         system("sh", "-c", $shell_command);
     }
     elsif ($action eq "reconcile") {
+        next unless $count;
         die "reconciliation is only available for (flux) kustomizations\n" unless $kind eq "kustomizations";
         my $namespace = $datum->[0];
         my $name = $datum->[1];
         my @command = (
             "flux",
             "reconcile",
-            $kind,
+            # needs singular for whatever reason
+            "kustomization",
             "-n",
             $namespace,
             $name,
