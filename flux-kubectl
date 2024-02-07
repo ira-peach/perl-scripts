@@ -80,6 +80,7 @@ sub usage {
     say "  -P|--preserve-columns  preserve fixed-width columns on output instead of converting to tab-separated value";
     say "  -s|--shell CONTAINER [ARGS]  shell into matched pod and CONTAINER";
     say "  -R|--reconcile  reconcile kustomization kind (with source)";
+    say "  -y|--yaml  output yaml";
     say "  -v,--verbose  add more verbose messaging";
 }
 
@@ -196,6 +197,7 @@ my $field_expr = "";
 my %match_column;
 my $follow;
 my $kind;
+my $output_yaml;
 my $preserve_columns;
 my $verbose;
 my $force;
@@ -230,6 +232,7 @@ GetOptions(
         $container = $value;
     },
     "reconcile|R" => sub { $action = "reconcile" },
+    "yaml|y" => \$output_yaml,
     "verbose|v!" => \$verbose,
     "<>" => \&add_arg)
 or die "error in command line arguments\n";
@@ -262,6 +265,19 @@ warn "verbose: kind is '$kind'\n" if $verbose;
 
 if ($action eq "logs" and $kind ne "pods") {
     die "--logs is only compatible with kind 'pod'";
+}
+
+if ($output_yaml) {
+    die "yaml output only valid for get action" if $action ne "get";
+    my @command = ("kubectl", "get", $kind, "-A", "-o", "yaml");
+    push @command, @args;
+    my $shell_command = shell_quote @command;
+    if ($dry_run) {
+        warn "dry run: $shell_command\n";
+        exit 0;
+    }
+    system($shell_command);
+    exit $? >> 8;
 }
 
 my $command = qq(kubectl get "$kind" -A -o wide);
