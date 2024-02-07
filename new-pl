@@ -186,6 +186,21 @@ use POSIX qw(strftime);
 # perl-Capture-Tiny, libcapture-tiny-perl
 #use Capture::Tiny qw(capture capture_stdout capture_stderr capture_merged tee tee_stdout tee_stderr tee_merged);
 
+# perl-File-chdir, libfile-chdir-perl
+use File::chdir qw(\$CWD);
+
+# perl-File-Copy-Recursive, libfile-copy-recursive-perl
+#use File::Copy::Recursive qw(rcopy);
+
+# (none; use cpan), libcarp-always-perl
+#use Carp::Always;
+
+sub pp {
+    use Data::Dumper;
+    local $Data::Dumper::Indent = 1;
+    print Dumper(@_);
+}
+
 $| = 1;
 
 my $now = time();
