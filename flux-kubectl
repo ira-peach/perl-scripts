@@ -171,13 +171,7 @@ sub get_aliases {
         $output{$datum->[1]} = $datum->[0];
         $output{$datum->[0]} = $datum->[0];
     }
-    #for my $datum ($parsed->{data}->@*) {
-    #    $count++;
-    #    next unless $count;
-    #    my $singular = $datum->[0] =~ s/s$//r;
-    #    push @{$output{$datum->[0]}}, $singular if $singular and not $output{$datum->[0]};
-    #    push @{$output{$datum->[0]}}, $datum->[1];
-    #}
+
     return %output;
 }
 
