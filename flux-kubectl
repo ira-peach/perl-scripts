@@ -1,6 +1,6 @@
 #!/usr/bin/env perl
 
-# PROGRAM_NAME - SHORT_PROGRAM_DESCRIPTION
+# flux-kubectl - wrap around kubectl functionality
 # Copyright (C) 2024  Ira Peach
 #
 # This program is free software: you can redistribute it and/or modify it under
@@ -25,6 +25,10 @@ use File::Find qw(find);
 use File::Path qw(make_path);
 use Getopt::Long qw(:config gnu_getopt no_ignore_case no_auto_abbrev);
 use POSIX qw(strftime);
+use String::ShellQuote qw(shell_quote);
+use YAML::XS qw(Dump Load);
+
+my $version = 1;
 
 sub pp {
     use Data::Dumper;
@@ -35,27 +39,6 @@ sub pp {
 # The below imports require installation of some packages.  Packages are listed
 # for cygwin, then debian.
 
-# perl-JSON-XS, libjson-xs-perl
-#use JSON::XS qw(decode_json encode_json);
-
-# perl-File-Slurp, libfile-slurp-perl
-#use File::Slurp qw(read_file write_file);
-
-# perl-YAML-LibYAML, libyaml-libyaml-perl
-use YAML::XS qw(Dump Load);
-
-# (none; use cpan), libfile-tee-perl
-#use File::Tee qw(tee);
-
-# (none; use cpan), libstring-shellquote-perl
-use String::ShellQuote qw(shell_quote);
-
-# perl-IPC-System-Simple, libipc-system-simple-perl
-#use IPC::System::Simple qw(capture capturex system systemx run runx $EXITVAL EXIT_ANY);
-
-# perl-Capture-Tiny, libcapture-tiny-perl
-#use Capture::Tiny qw(capture capture_stdout capture_stderr capture_merged tee tee_stdout tee_stderr tee_merged);
-
 $| = 1;
 
 my $now = time();
@@ -64,23 +47,35 @@ $now = strftime('%Y-%m-%d_%H%M%SZ', gmtime($now));
 sub usage {
     my $prog = basename $0;
     say "usage: $prog KIND [OPTIONS]...";
-    say "  SHORT_PROGRAM_DESCRIPTION";
-    say "  -h,--help     display this usage and exit";
-    say "  -c|--container  show containers on pods";
-    say "  -d|--delete   delete matching resources of KIND";
-    say "  --dry-run  print commands instead of executing";
-    say "  -F|--field NUM=REGEX  match field NUM with REGEX (starting from 1)";
-    say "  --follow  follow when given --logs";
-    say "  -g|--get  get resource (default action)";
-    say "  --getx  get resource, but do not process data in the program (used for debugging)";
-    say "  --logs  get logs from kind pod";
-    say "  --explain  explain kind";
-    say "  -P|--preserve-columns  preserve fixed-width columns on output instead of converting to tab-separated value";
-    say "  -R|--reconcile  reconcile kustomization kind (with source)";
+    say "";
+    say "  wrap around kubectl functionality";
+    say "";
+    say "  -h,--help                    display this usage and exit";
+    say "  -c|--container               show containers on pods";
+    say "  -d|--delete                  delete matching resources of KIND";
+    say "  --dry-run                    print commands instead of executing";
+    say "  -F|--field NUM=REGEX         match field NUM with REGEX (starting from 1)";
+    say "  --follow                     follow when given --logs";
+    say "  -g|--get                     get resource (default action)";
+    say "  --getx                       get resource, but do not process data in the program (used for debugging)";
+    say "  --logs                       get logs from kind pod";
+    say "  --explain                    explain kind";
+    say "  -P|--preserve-columns        preserve fixed-width columns on output instead of converting to tab-separated value";
+    say "  -R|--reconcile               reconcile kustomization kind (with source)";
     say "  -s|--shell CONTAINER [ARGS]  shell into matched pod and CONTAINER";
-    say "  -t|--interactive  pass stin and use TTY for --shell (passes -it to 'kubectl exec')";
-    say "  -y|--yaml  output yaml";
-    say "  -v,--verbose  add more verbose messaging";
+    say "  -t|--interactive             pass stin and use TTY for --shell (passes -it to 'kubectl exec')";
+    say "  -y|--yaml                    output yaml";
+    say "  -v,--verbose                 add more verbose messaging";
+    say "  -V,--version                 show version";
+}
+
+sub version {
+    my $prog = basename $0;
+    say "$prog version $version";
+    say "Copyright (C) 2024  Ira Peach";
+    say "License AGPLv3+: GNU AGPL version 3 or later <https://gnu.org/licenses/agpl.html>";
+    say "This program is free software: you are free to change and redistribute it.";
+    say "There is NO WARRANTY, to the extent permitted by law.";
 }
 
 # The tricky thing about the default kubectl output is that it is fixed width
@@ -106,7 +101,6 @@ sub parse_fixed_width_data {
         $header =~ s/$header_regex//;
         $header = "" unless $match;
         my $length = length $1;
-        #$length -= 1;
         my $name = $1;
         $name =~ s/ +$//;
 
@@ -225,6 +219,7 @@ GetOptions(
     "reconcile|R" => sub { $action = "reconcile" },
     "yaml|y" => \$output_yaml,
     "verbose|v!" => \$verbose,
+    "version|V" => sub { version; exit 0 },
     "<>" => \&add_arg)
 or die "error in command line arguments\n";
 
