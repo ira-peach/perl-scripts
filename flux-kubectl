@@ -30,15 +30,6 @@ use YAML::XS qw(Dump Load);
 
 my $version = 1;
 
-sub pp {
-    use Data::Dumper;
-    local $Data::Dumper::Indent = 1;
-    print Dumper(@_);
-}
-# usage: pp $my_var;
-# The below imports require installation of some packages.  Packages are listed
-# for cygwin, then debian.
-
 $| = 1;
 
 my $now = time();
