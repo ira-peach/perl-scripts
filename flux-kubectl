@@ -194,6 +194,7 @@ my $follow;
 my $kind;
 my $output_yaml;
 my $preserve_columns;
+my $interactive;
 my $verbose;
 my $force;
 
@@ -218,6 +219,7 @@ GetOptions(
     "force|f" => \$force,
     "get|g" => sub { $action = "get"; },
     "getx" => sub { $action = "getx"; },
+    "interactive|t" => \$interactive,
     "logs" => sub { $action = "logs" },
     "preserve-columns|P" => \$preserve_columns,
     "shell|s=s" => sub {
@@ -336,10 +338,11 @@ OUTER: for my $datum (@data) {
         die "type should be pod for shell action\n" unless $kind eq "pods";
         my $namespace = $datum->[0];
         my $name = $datum->[1];
-        unless ($container) {
+        my $selected_container = $container;
+        unless ($selected_container) {
             my @containers = get_containers $namespace, $name;
-            $container = $containers[0]->{container}{name};
-            warn "warning: container automatically set to '$container'\n";
+            $selected_container = $containers[0]->{container}{name};
+            warn "warning: container automatically set to '$selected_container'\n";
         }
 
         my @command = (
@@ -349,10 +352,13 @@ OUTER: for my $datum (@data) {
             $namespace,
             $name,
             "-c",
-            $container,
-            "-it",
-            "--",
+            $selected_container,
         );
+
+        if ($interactive) {
+            push @command, "-it";
+        }
+        push @command, "--";
 
         if (@args) {
             push @command, @args
@@ -370,9 +376,12 @@ OUTER: for my $datum (@data) {
 
         system("sh", "-c", $shell_command);
         my $status = $? >> 8;
-        if (not $force and $status) {
-            warn "error: last command exited with status $status.  Exiting (use --force to ignore)\n";
-            exit $status;
+        if ($status) {
+            unless ($force) {
+                warn "error: last command exited with status $status.  Exiting (use --force to ignore)\n";
+                exit $status;
+            }
+            warn "warning: last command exited with status $status.  Ignoring error due to --force\n";
         }
     }
     elsif ($action eq "get-container") {
