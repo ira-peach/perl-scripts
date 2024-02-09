@@ -98,5 +98,6 @@ sub install {
 install ",yt-dlp";
 install "backup-firefox-profile.pl";
 install "ffmpeg-polyconvert.pl";
+install "flux-kubectl";
 install "new-pl";
 install "sillytavern";
