@@ -76,8 +76,9 @@ sub usage {
     say "  --logs  get logs from kind pod";
     say "  --explain  explain kind";
     say "  -P|--preserve-columns  preserve fixed-width columns on output instead of converting to tab-separated value";
-    say "  -s|--shell CONTAINER [ARGS]  shell into matched pod and CONTAINER";
     say "  -R|--reconcile  reconcile kustomization kind (with source)";
+    say "  -s|--shell CONTAINER [ARGS]  shell into matched pod and CONTAINER";
+    say "  -t|--interactive  pass stin and use TTY for --shell (passes -it to 'kubectl exec')";
     say "  -y|--yaml  output yaml";
     say "  -v,--verbose  add more verbose messaging";
 }
