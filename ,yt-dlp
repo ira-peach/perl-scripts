@@ -57,18 +57,22 @@ GetOptions(
     "<>" => \&add_arg)
 or die "error in command line arguments\n";
 
-unless ($output) {
-    $output = "%(upload_date>%Y-%m-%d)s_%(epoch-3600>%H%M%S)s.\@%(uploader)s.%(id)s";
-    $output = "$output.$custom_title" if $custom_title;
-    $output = "$output.%(ext)s";
-}
-
 push @args, @ARGV;
 
 die "Give at least 1 argument.\n" unless scalar @args >= 1;
 
-my $url = $args[0];
-shift @args;
+my $url = shift @args;
+
+unless ($output) {
+    if ($url =~ "^https?://www\.tiktok\.com/.*") {
+        $output = "%(upload_date>%Y-%m-%d)s_%(epoch-3600>%H%M%S)s.\@%(uploader)s.%(id)s.tiktok";
+        $output = "$output.$custom_title" if $custom_title;
+        $output = "$output.%(ext)s";
+    }
+    else {
+        $output = "%(uploader)s - %(title)s.%(ext)s";
+    }
+}
 
 if ($json_output) {
     my $json = JSON::XS->new->pretty(1);
