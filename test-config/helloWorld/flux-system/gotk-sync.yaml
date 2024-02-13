@@ -22,6 +22,7 @@ spec:
   interval: 10m0s
   path: ./test-config/helloWorld
   prune: true
+  force: true
   sourceRef:
     kind: GitRepository
     name: flux-system
