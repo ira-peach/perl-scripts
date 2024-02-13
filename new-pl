@@ -201,6 +201,11 @@ sub pp {
     print Dumper(@_);
 }
 
+# Don't convert paths to win32-style; this can break some external command
+# calls
+$ENV{MSYS_NO_PATHCONV} = 1;
+$ENV{MSYS2_ARG_CONV_EXCL} = "*";
+
 $| = 1;
 
 my $now = time();
