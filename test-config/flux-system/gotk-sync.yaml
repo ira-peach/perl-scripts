@@ -20,7 +20,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m0s
-  path: ./test-config/helloWorld/flux-system
+  path: ./test-config/flux-system
   prune: true
   force: true
   sourceRef:
