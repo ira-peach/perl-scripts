@@ -27,6 +27,14 @@ use Getopt::Long qw(:config gnu_getopt no_ignore_case no_auto_abbrev);
 use POSIX qw(strftime);
 use String::ShellQuote qw(shell_quote);
 use YAML::XS qw(Dump Load);
+# TODO: Use this for singular/plural conversions
+#Lingua::EN::Inflect
+
+# Don't convert paths to win32-style; this will break some subcommands, like
+# shell arguments to pods.
+$ENV{MSYS_NO_PATHCONV} = 1;
+$ENV{MSYS2_ARG_CONV_EXCL} = "*";
+$ENV{KUBECTL_EDITOR} = $ENV{VISUAL} // $ENV{EDITOR} // $ENV{KUBECTL_EDITOR};
 
 my $version = 1;
 
@@ -38,6 +46,8 @@ $now = strftime('%Y-%m-%d_%H%M%SZ', gmtime($now));
 sub usage {
     my $prog = basename $0;
     say "usage: $prog KIND [OPTIONS]...";
+    say "       $prog pods [OPTIONS]... --logs [CONTAINER] -- [ADDITIONAL_OPTS]...";
+    say "       $prog pods [OPTIONS]... [-t] -s [CONTAINER] -- [ADDITIONAL_OPTS]...";
     say "";
     say "  wrap around kubectl functionality";
     say "";
@@ -45,16 +55,18 @@ sub usage {
     say "  -c|--container               show containers on pods";
     say "  -d|--delete                  delete matching resources of KIND";
     say "  --dry-run                    print commands instead of executing";
+    say "  --edit                       edit resource (uses VISUAL, EDITOR, or KUBECTL_EDITOR for editor)";
     say "  -F|--field NUM=REGEX         match field NUM with REGEX (starting from 1)";
     say "  --follow                     follow when given --logs";
     say "  -g|--get                     get resource (default action)";
     say "  --getx                       get resource, but do not process data in the program (used for debugging)";
+    say "  -i|--stdin                   pass stdin for --shell";
     say "  --logs                       get logs from kind pod";
     say "  --explain                    explain kind";
     say "  -P|--preserve-columns        preserve fixed-width columns on output instead of converting to tab-separated value";
     say "  -R|--reconcile               reconcile kustomization kind (with source)";
     say "  -s|--shell CONTAINER         shell into matched pod and CONTAINER (use '' for autoselect)";
-    say "  -t|--interactive             pass stin and use TTY for --shell (passes -it to 'kubectl exec')";
+    say "  -t|--tty                     set stdin as a TTY";
     say "  -y|--yaml                    output yaml";
     say "  -v,--verbose                 add more verbose messaging";
     say "  -V,--version                 show version";
@@ -150,11 +162,11 @@ sub get_aliases {
     for my $datum ($parsed->{data}->@*) {
         $count++;
         next unless $count;
-        next unless $datum->[1];
         my $singular = $datum->[0] =~ s/s$//r;
         $output{$singular} = $datum->[0];
-        $output{$datum->[1]} = $datum->[0];
         $output{$datum->[0]} = $datum->[0];
+        next unless $datum->[1];
+        $output{$datum->[1]} = $datum->[0];
     }
 
     return %output;
@@ -172,17 +184,21 @@ my $field_expr = "";
 my %match_column;
 my $follow;
 my $kind;
+my $ks_path;
 my $output_yaml;
 my $preserve_columns;
-my $interactive;
+my $use_tty;
+my $use_stdin;
 my $verbose;
 my $force;
 
 GetOptions(
     "help|h" => sub { usage; exit 0 },
+    "build" => sub { $action = "build" },
     "container|c" => sub { $action = "get-container" },
     "delete|d" => sub { $action = "delete"; },
     "dry-run" => \$dry_run,
+    "edit" => sub { $action = "edit" },
     "explain" => sub { $action = "explain"; },
     "field|F=s" => sub {
         my ($name,$exprs) = @_;
@@ -199,26 +215,37 @@ GetOptions(
     "force|f" => \$force,
     "get|g" => sub { $action = "get"; },
     "getx" => sub { $action = "getx"; },
-    "interactive|t" => \$interactive,
     "logs" => sub { $action = "logs" },
     "preserve-columns|P" => \$preserve_columns,
-    "shell|s=s" => sub {
-        my ($name,$value) = @_;
-        $action = "shell";
-        $container = $value;
-    },
+    "shell|s" => sub { $action = "shell" },
+    "stdin|i" => \$use_stdin,
     "reconcile|R" => sub { $action = "reconcile" },
+    "tty|t" => \$use_tty,
     "yaml|y" => \$output_yaml,
     "verbose|v!" => \$verbose,
     "version|V" => sub { version; exit 0 },
     "<>" => \&add_arg)
 or die "error in command line arguments\n";
 
-push @args, @ARGV;
-
-die "provide at least 1 argument (resource kind plus additional arguments)" if scalar @args < 1;
-
 $kind = shift @args // die "please provide resource kind\n";
+
+if ($action eq "logs" or $action eq "shell") {
+    $container = shift @args if @args;
+}
+elsif ($action eq "build") {
+    $ks_path = shift @args;
+    if (-f $ks_path and basename($ks_path) eq "kustomization.yaml") {
+        $ks_path = dirname $ks_path;
+    }
+    my @command = ("kustomize", "build", "$ks_path");
+    my $shell_command = shell_quote @command;
+    system "sh", "-c", $shell_command;
+    exit 0;
+}
+
+die "too many arguments (use -- to pass additional arguments to kubectl, flux, or kustomize)" if scalar @args > 0;
+
+push @args, @ARGV;
 
 if ($action eq "explain") {
     my @command = ("kubectl", "explain", $kind);
@@ -240,6 +267,9 @@ warn "verbose: kind is '$kind'\n" if $verbose;
 
 if ($action eq "logs" and $kind ne "pods") {
     die "--logs is only compatible with kind 'pod'";
+}
+elsif ($action eq "build" and $kind ne "kustomizations") {
+    die "--build is only compatible with kind 'kustomization'";
 }
 
 if ($output_yaml) {
@@ -265,6 +295,10 @@ my @data_lengths = @{$parsed->{lengths}};
 my $fmt = $parsed->{format};
 my $is_namespaced = $data[0][0] eq "NAMESPACE";
 
+if ($action eq "get-container") {
+    say "NAMESPACE\tNAME\tCONTAINER";
+}
+
 my $count = -1;
 OUTER: for my $datum (@data) {
     ++$count;
@@ -282,7 +316,36 @@ OUTER: for my $datum (@data) {
         }
     }
 
-    if ($action eq "logs") {
+    if ($action eq "edit") {
+        next unless $count;
+        my $namespace;
+        my $name;
+        if ($is_namespaced) {
+            $namespace = $datum->[0];
+            $name = $datum->[1];
+        }
+        else {
+            $name = $datum->[0];
+        }
+
+        my @command = ("kubectl", "edit", $kind);
+        if ($is_namespaced) {
+            push @command, "-n";
+            push @command, $namespace;
+        }
+        push @command, $name;
+        my $shell_command = shell_quote @command;
+        system($shell_command);
+        my $status = $? >> 8;
+        if ($status) {
+            unless ($force) {
+                warn "error: last command exited with status $status.  Exiting (use --force to ignore)\n";
+                exit $status;
+            }
+            warn "warning: last command exited with status $status.  Ignoring error due to --force\n";
+        }
+    }
+    elsif ($action eq "logs") {
         next unless $count;
         my $namespace = $datum->[0];
         my $name = $datum->[1];
@@ -293,8 +356,13 @@ OUTER: for my $datum (@data) {
             $namespace,
             $name,
             "--timestamps=true",
-            "--all-containers=true",
         );
+        if ($container) {
+            push @command, "-c", $container;
+        }
+        else {
+            push @command, "--all-containers=true";
+        }
         push @command, "--follow=true" if $follow;
         push @command, @args if @args;
         my $shell_command = shell_quote @command;
@@ -336,8 +404,12 @@ OUTER: for my $datum (@data) {
             $selected_container,
         );
 
-        if ($interactive) {
-            push @command, "-it";
+        if ($use_stdin) {
+            push @command, "-i";
+        }
+
+        if ($use_tty) {
+            push @command, "-t";
         }
         push @command, "--";
 
@@ -377,7 +449,6 @@ OUTER: for my $datum (@data) {
         }
         my $yaml = qx($shell_command);
         my $resource = Load $yaml;
-        say "NAMESPACE\tNAME\tCONTAINER";
         for my $container (@{$resource->{spec}{containers}}) {
             say "$namespace\t$name\t$container->{name}";
         }
