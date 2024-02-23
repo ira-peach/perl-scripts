@@ -1,0 +1,92 @@
+#!/usr/bin/env perl
+
+# lk8s - list kubernetes manifests recursively
+# Copyright (C) 2024  Ira Peach
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of the GNU Affero General Public License as published by the Free
+# Software Foundation, either version 3 of the License, or (at your option) any
+# later version.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+use v5.32.1;
+use warnings;
+use strict;
+
+use File::Basename;
+use File::Find qw(find);
+use Getopt::Long qw(:config gnu_getopt no_ignore_case no_auto_abbrev);
+use File::Spec qw(abs2rel);
+use Cwd;
+
+# perl-YAML-LibYAML, libyaml-libyaml-perl
+use YAML::XS qw(Dump Load LoadFile);
+
+$| = 1;
+
+sub usage {
+    my $prog = basename $0;
+    say "usage: $prog [-hv] [-a API] [-k KIND] [-n NAME] [--] [PATH]";
+    say "  list kubernetes manifests recursively";
+    say "  -h,--help         display this usage and exit";
+    say "  -a,--api-version  API  print APIs matching API regex";
+    say "  -k,--kind KIND    print kinds matching KIND regex";
+    say "  -n,--name NAME    print names matching NAME regex";
+    say "  -v,--verbose      (unused; future: add more verbose messaging)";
+}
+
+my @args = ();
+sub add_arg {
+    push @args, @_;
+}
+
+my $api_version_match = ".*";
+my $kind_match = ".*";
+my $name_match = ".*";
+my $verbose;
+
+GetOptions(
+    "help|h" => sub { usage; exit 0 },
+    "api-version|a=s" => \$api_version_match,
+    "kind|k=s" => \$kind_match,
+    "name|n=s" => \$name_match,
+    "verbose|v!" => \$verbose,
+    "<>" => \&add_arg)
+or die "error in command line arguments\n";
+
+push @args, @ARGV;
+
+my $path = shift @args // ".";
+
+die "too many arguments" if scalar @args > 0;
+
+my @files = ();
+
+sub wanted {
+    push @files, $File::Find::name if $_ =~ /\.yaml$/;
+}
+
+find(\&wanted, $path);
+
+for my $file (@files) {
+    my $file = File::Spec->abs2rel($file, getcwd);
+    my @docs = eval { LoadFile $file };
+    next unless @docs;
+    for my $doc (@docs) {
+        next unless ref $doc eq "HASH";
+        my $kind = $doc->{kind} // next;
+        my $name = $doc->{metadata}{name} // next;
+        my $api_version = $doc->{apiVersion} // next;
+        next unless $kind =~ $kind_match;
+        next unless $name =~ $name_match;
+        next unless $api_version =~ $api_version_match;
+        say "$kind\t$name\t$api_version\t$file";
+    }
+}
