@@ -157,8 +157,8 @@ use warnings;
 use strict;
 
 use File::Basename;
-use File::Find qw(find);
-use File::Path qw(make_path);
+#use File::Find qw(find);
+#use File::Path qw(make_path);
 use Getopt::Long qw(:config gnu_getopt no_ignore_case no_auto_abbrev);
 use POSIX qw(strftime);
 
@@ -167,6 +167,9 @@ use POSIX qw(strftime);
 
 # perl-JSON-XS, libjson-xs-perl
 #use JSON::XS qw(decode_json encode_json);
+
+# cpan, cpan
+#use JSON5 qw(decode_json5 encode_json5);
 
 # perl-File-Slurp, libfile-slurp-perl
 #use File::Slurp qw(read_file write_file);
@@ -187,7 +190,7 @@ use POSIX qw(strftime);
 #use Capture::Tiny qw(capture capture_stdout capture_stderr capture_merged tee tee_stdout tee_stderr tee_merged);
 
 # perl-File-chdir, libfile-chdir-perl
-use File::chdir qw(\$CWD);
+#use File::chdir; # $CWD
 
 # perl-File-Copy-Recursive, libfile-copy-recursive-perl
 #use File::Copy::Recursive qw(rcopy);
